@@ -1,6 +1,4 @@
-def main():
-    print("Hello from memoery-for-llm!")
-
+from examples.cli.interface import run_cli
 
 if __name__ == "__main__":
-    main()
+    run_cli()
