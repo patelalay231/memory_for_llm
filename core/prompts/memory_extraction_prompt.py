@@ -1,5 +1,4 @@
 def get_memory_extraction_prompt(
-    conversation_summary: str,
     recent_messages: list[dict],
     user_message: str,
     assistant_message: str,
@@ -35,9 +34,6 @@ Each memory must be written as a standalone factual statement.
 
 Below is context from a conversation between a user and an assistant.
 
-Conversation summary:
-{conversation_summary}
-
 Recent conversation (last N turns):
 {recent_messages_str}
 
@@ -62,9 +58,9 @@ EXPECTED OUTPUT FORMAT:
 {{
   "memories": [
     {{
+      "source": "user_message",
       "content": "The user is vegetarian",
-      "type": "dietary_preference",
-      "confidence": 0.95
+      "type": "dietary_preference"
     }}
   ]
 }}

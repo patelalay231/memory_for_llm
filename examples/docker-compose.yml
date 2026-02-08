@@ -1,0 +1,38 @@
+version: '3.8'
+
+services:
+  mongodb:
+    image: mongo:7.0
+    container_name: memoery_mongodb
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+    environment:
+      - MONGO_INITDB_DATABASE=memory_db
+    restart: unless-stopped
+    networks:
+      - memoery_network
+
+  postgres:
+    image: postgres:15-alpine
+    container_name: memoery_postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=memory_db
+    restart: unless-stopped
+    networks:
+      - memoery_network
+
+volumes:
+  mongodb_data:
+  postgres_data:
+
+networks:
+  memoery_network:
+    driver: bridge

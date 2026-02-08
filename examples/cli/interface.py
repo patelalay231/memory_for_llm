@@ -1,5 +1,7 @@
 from core.providers.gemini import GeminiProvider
-from core.extraction.memory_extract import MemoryExtract
+from core.api.memory_api import MemoryAPI
+from logger import Logger
+
 def run_cli():
     """Run the CLI chat interface."""
     system_instruction = """You are a friendly, helpful, and supportive friend. 
@@ -11,9 +13,20 @@ def run_cli():
                     conversation flowing naturally."""
     
     llm_provider = GeminiProvider()
-    memory_extract = MemoryExtract()
+    
+    # Initialize memory API
+    memory_api = MemoryAPI({
+        "llm_provider": llm_provider,
+        "storage": {
+            "type": "mongodb",
+            "uri": "mongodb://localhost:27017",
+            "database": "memory_db",
+            "collection": "memories"
+        },
+        "max_retries": 3,
+        # "debug": True  # Can also set debug here
+    })
 
-    conversation_summary = ""
     history_messages = []
 
     while True:
@@ -24,11 +37,21 @@ def run_cli():
 
         print(f"🤖 AI: ", end="", flush=True)
         assistant_response = llm_provider.send_message(user_message, system_instruction)
-
-        extracted_memory = memory_extract.extract_memory(conversation_summary, history_messages, user_message, assistant_response)
         print(assistant_response)
 
-        print("Extracted Memory: ", extracted_memory)
+        # Extract and store memories
+        try:
+            memories = memory_api.add_memory(
+                recent_messages=history_messages,
+                user_message=user_message,
+                assistant_message=assistant_response
+            )
+            if memories:
+                print(f"\n💾 Summary: Successfully stored {len(memories)} memory/memories")
+            else:
+                print("\n💾 Summary: No memories extracted from this conversation")
+        except Exception as e:
+            print(f"\n⚠️ Memory extraction/storage failed: {e}")
 
         history_messages.append({"user": user_message, "assistant": assistant_response})
 
