@@ -1,55 +1,116 @@
+from typing import Literal
+
+MemoryType = Literal["user", "agent", "both"]
+
+
 def get_memory_extraction_prompt(
-    recent_messages: list[dict],
     user_message: str,
     assistant_message: str,
+    recent_messages: list[dict] | None = None,
+    memory_type: MemoryType = "both",
 ) -> str:
     """
-    Build a prompt that instructs the model to extract long-term user memories.
-    """
+    Build a prompt that instructs the model to extract long-term memories.
 
-    recent_messages_str = "\n".join(
-        f"User: {message['user']}\nAssistant: {message['assistant']}"
-        for message in recent_messages
+    Args:
+        user_message: Current user message.
+        assistant_message: Current assistant response.
+        recent_messages: Optional list of prior turns {"user": str, "assistant": str}. Default [].
+        memory_type: "user" = extract only from user message; "agent" = only from assistant; "both" = both.
+    """
+    recent_messages = recent_messages or []
+    recent_messages_str = (
+        "\n".join(
+            f"User: {m['user']}\nAssistant: {m['assistant']}"
+            for m in recent_messages
+        )
+        if recent_messages
+        else "(No prior turns in this batch.)"
     )
+
+    if memory_type == "user":
+        source_instruction = """
+# [IMPORTANT]: EXTRACT ONLY FROM THE USER MESSAGE. Do not use the assistant message.
+# [IMPORTANT]: You will be penalized if you include information from the assistant message.
+"""
+        current_block = f"""
+Current exchange (extract only from User):
+User: {user_message}
+Assistant: (omitted — do not use for extraction)
+"""
+    elif memory_type == "agent":
+        source_instruction = """
+# [IMPORTANT]: EXTRACT ONLY FROM THE ASSISTANT MESSAGE. Do not use the user message.
+# [IMPORTANT]: You will be penalized if you include information from the user message.
+"""
+        current_block = f"""
+Current exchange (extract only from Assistant):
+User: (omitted — do not use for extraction)
+Assistant: {assistant_message}
+"""
+    else:
+        source_instruction = ""
+        current_block = f"""
+Current exchange:
+User: {user_message}
+Assistant: {assistant_message}
+"""
 
     return f"""
 You are a memory extraction engine for a long-term AI assistant.
 
-Your job is to extract ONLY stable, long-term, user-specific facts that should be remembered across conversations.
+Your job is to THINK about the conversation and decide what (if anything) is worth remembering for future conversations. Do NOT extract everything—only what will genuinely help the assistant respond better later.
+{source_instruction}
+STEP 1: Consider the conversation. Ask yourself: "If we have a new chat next week, what from this exchange would be useful to know?"
+STEP 2: Extract ONLY those items. If nothing is worth storing, return an empty list.
 
-DO NOT extract:
-- transient states (mood, temporary plans, one-time actions)
-- conversational fluff
-- questions
-- assistant suggestions
-- information already known unless it is corrected or refined
+What is worth remembering (be selective):
+- User-related facts: preferences, profile, habits, relationships, work, goals—when they are stated clearly and will affect future answers.
+- What the assistant said that should be reused: definitions you gave, facts you stated, or decisions the user agreed to (e.g. "We agreed to use weekly backups", "Project uses Python 3.11").
+- Decisions or agreements that both sides relied on.
 
-A memory should be:
-- specific
-- factual
-- persistent over time
-- useful in future conversations
+What is NOT worth remembering (do not extract):
+- Greetings, thanks, small talk ("hi", "how are you", "thanks!").
+- One-off questions or answers that won't matter later.
+- Temporary plans or mood ("I'm tired today", "I'll try that tomorrow").
+- General knowledge the assistant stated that isn't specific to this user or project.
+- Anything that is only relevant to this single turn.
 
-Each memory must be written as a standalone factual statement.
+Each memory must be a single, standalone factual statement. Do not infer beyond what was said.
 
-Below is context from a conversation between a user and an assistant.
+---
+
+EXAMPLES
+
+Example 1 — Worth storing (user fact + assistant-agreed fact):
+User: "I'm vegetarian and I work from home on Mondays."
+Assistant: "Got it. For your diet, you could try lentil curry. For Mondays, I'll keep that in mind."
+→ Store: user preference (vegetarian), user context (works from home Mondays). The assistant's suggestion (lentil curry) is a one-off tip, not worth storing.
+
+Example 2 — Worth storing (from assistant answer):
+User: "What version of Python does our project use?"
+Assistant: "Your project is set up with Python 3.11, and you deploy to production every Friday."
+→ Store: fact from assistant (project uses Python 3.11, deploys Fridays). This will help future answers about the project.
+
+Example 3 — Nothing to store:
+User: "What's the weather like?"
+Assistant: "I don't have access to real-time weather. You could check a weather site."
+→ No lasting fact about the user or agreed context. Return empty list.
+
+Example 4 — Nothing to store:
+User: "Thanks, that helped!"
+Assistant: "Glad I could help. Ask anytime."
+→ Polite closing, no factual content to remember. Return empty list.
+
+---
+
+Below is the conversation to analyze.
 
 Recent conversation (last N turns):
 {recent_messages_str}
+{current_block}
 
-Current exchange:
-User: {user_message}
-Assistant: {assistant_message}
-
-TASK:
-Extract all new long-term memories implied or explicitly stated in the conversation.
-
-Rules:
-- Extract only user-related facts (preferences, profile, habits, relationships, locations, work, goals).
-- If no new long-term memory is present, return an empty list.
-- Each memory must be atomic (one fact per memory).
-- Do NOT infer beyond what is stated.
-- Do NOT repeat existing memories unless they are clarified or corrected.
+TASK: Think about what (if anything) from this conversation should be remembered. Extract only those items. Return valid JSON.
 
 Return the output strictly as valid JSON.
 
@@ -60,13 +121,22 @@ EXPECTED OUTPUT FORMAT:
     {{
       "source": "user_message",
       "content": "The user is vegetarian",
-      "type": "dietary_preference"
+      "type": "user_preference"
+    }},
+    {{
+      "source": "assistant_message",
+      "content": "Project uses Python 3.11 and deploys on Fridays",
+      "type": "context"
     }}
   ]
 }}
-If nothing should be stored:
-
+```
+If nothing is worth storing, return:
+```json
 {{
   "memories": []
 }}
+```
+
+Note: "source" is "user_message", "assistant_message", or "conversation". "type" examples: user_preference, user_context, fact, definition, decision, context.
 """

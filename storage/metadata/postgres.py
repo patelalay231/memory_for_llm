@@ -138,6 +138,7 @@ class PostgresStorage(BaseStorage):
                     content TEXT NOT NULL,
                     type VARCHAR(100) NOT NULL,
                     timestamp TIMESTAMP NOT NULL,
+                    embedding REAL[],
                     conversation_id VARCHAR(100),
                     user_id VARCHAR(100)
                 )
@@ -167,10 +168,10 @@ class PostgresStorage(BaseStorage):
             Logger.debug("Schema created successfully", "[PostgreSQL]")
             return True
         except Exception as e:
-            Logger.error(f"Error creating schema: {e}", "[PostgreSQL]")
+            Logger.debug(f"Error creating schema: {e}", "[PostgreSQL]")
             return False
     
-    def insert_memory(self, memory: Memory) -> bool:
+    def insert_memory_metadata(self, memory: Memory) -> bool:
         """Insert a memory record."""
         try:
             if self._pool:
@@ -181,11 +182,11 @@ class PostgresStorage(BaseStorage):
             cursor = conn.cursor()
             cursor.execute("""
                 INSERT INTO memories 
-                (memory_id, source, content, type, timestamp, conversation_id, user_id)
-                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                (memory_id, source, content, type, timestamp, embedding)
+                VALUES (%s, %s, %s, %s, %s, %s)
             """, (
                 memory.memory_id, memory.source, memory.content, memory.type,
-                memory.timestamp, memory.conversation_id, memory.user_id
+                memory.timestamp, memory.embedding
             ))
             conn.commit()
             cursor.close()
@@ -195,8 +196,150 @@ class PostgresStorage(BaseStorage):
             
             return True
         except Exception as e:
-            Logger.error(f"Error inserting memory: {e}", "[PostgreSQL]")
+            Logger.debug(f"Error inserting memory: {e}", "[PostgreSQL]")
             return False
+    
+    def update_memory_metadata(self, memory: Memory) -> bool:
+        """Update an existing memory record."""
+        try:
+            if self._pool:
+                conn = self._pool.getconn()
+            else:
+                conn = self._connection
+            
+            cursor = conn.cursor()
+            cursor.execute("""
+                UPDATE memories 
+                SET source = %s, content = %s, type = %s, timestamp = %s, embedding = %s
+                WHERE memory_id = %s
+            """, (
+                memory.source, memory.content, memory.type,
+                memory.timestamp, memory.embedding, memory.memory_id
+            ))
+            
+            if cursor.rowcount == 0:
+                Logger.debug(f"Memory {memory.memory_id} not found for update", "[PostgreSQL]")
+                cursor.close()
+                if self._pool:
+                    self._pool.putconn(conn)
+                return False
+            
+            conn.commit()
+            cursor.close()
+            
+            if self._pool:
+                self._pool.putconn(conn)
+            
+            Logger.debug(f"Updated memory {memory.memory_id}", "[PostgreSQL]")
+            return True
+        except Exception as e:
+            Logger.debug(f"Error updating memory: {e}", "[PostgreSQL]")
+            return False
+    
+    def delete_memory_metadata(self, memory_id: str) -> bool:
+        """Delete a memory record by memory_id."""
+        try:
+            if self._pool:
+                conn = self._pool.getconn()
+            else:
+                conn = self._connection
+            
+            cursor = conn.cursor()
+            cursor.execute("""
+                DELETE FROM memories 
+                WHERE memory_id = %s
+            """, (memory_id,))
+            
+            if cursor.rowcount == 0:
+                Logger.debug(f"Memory {memory_id} not found for deletion", "[PostgreSQL]")
+                cursor.close()
+                if self._pool:
+                    self._pool.putconn(conn)
+                return False
+            
+            conn.commit()
+            cursor.close()
+            
+            if self._pool:
+                self._pool.putconn(conn)
+            
+            Logger.debug(f"Deleted memory {memory_id}", "[PostgreSQL]")
+            return True
+        except Exception as e:
+            Logger.debug(f"Error deleting memory: {e}", "[PostgreSQL]")
+            return False
+
+    def delete_all_for_user(self, user_id: str) -> int:
+        """Delete all memories for a given user_id. Returns number of rows deleted."""
+        try:
+            if self._pool:
+                conn = self._pool.getconn()
+            else:
+                conn = self._connection
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM memories WHERE user_id = %s", (user_id,))
+            count = cursor.rowcount
+            conn.commit()
+            cursor.close()
+            if self._pool:
+                self._pool.putconn(conn)
+            Logger.debug(f"Deleted {count} memories for user_id={user_id}", "[PostgreSQL]")
+            return count
+        except Exception as e:
+            Logger.debug(f"Error deleting memories for user: {e}", "[PostgreSQL]")
+            return 0
+
+    def get_memories_by_ids(self, memory_ids: list[str]) -> list[Memory]:
+        """Retrieve memories by their IDs."""
+        try:
+            if not memory_ids:
+                return []
+            
+            if self._pool:
+                conn = self._pool.getconn()
+            else:
+                conn = self._connection
+            
+            cursor = conn.cursor()
+            
+            # Create placeholders for IN clause
+            placeholders = ",".join(["%s"] * len(memory_ids))
+            cursor.execute(f"""
+                SELECT memory_id, source, content, type, timestamp, embedding, 
+                       conversation_id, user_id
+                FROM memories 
+                WHERE memory_id IN ({placeholders})
+            """, tuple(memory_ids))
+            
+            rows = cursor.fetchall()
+            cursor.close()
+            
+            if self._pool:
+                self._pool.putconn(conn)
+            
+            memories = []
+            for row in rows:
+                try:
+                    memory = Memory(
+                        memory_id=row[0],
+                        source=row[1],
+                        content=row[2],
+                        type=row[3],
+                        timestamp=row[4],
+                        embedding=list(row[5]) if row[5] else None,
+                        conversation_id=row[6],
+                        user_id=row[7]
+                    )
+                    memories.append(memory)
+                except Exception as e:
+                    Logger.debug(f"Failed to parse memory record: {e}", "[PostgreSQL]")
+                    continue
+            
+            Logger.debug(f"Retrieved {len(memories)} memories from PostgreSQL", "[PostgreSQL]")
+            return memories
+        except Exception as e:
+            Logger.debug(f"Error retrieving memories: {e}", "[PostgreSQL]")
+            return []
     
     def close(self):
         """

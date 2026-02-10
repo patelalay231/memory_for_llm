@@ -89,17 +89,48 @@ class MongoDBStorage(BaseStorage):
             Logger.debug("Schema created successfully", "[MongoDB]")
             return True
         except Exception as e:
-            Logger.error(f"Error creating schema: {e}", "[MongoDB]")
+            Logger.debug(f"Error creating schema: {e}", "[MongoDB]")
             return False
     
-    def insert_memory(self, memory: Memory) -> bool:
+    def insert_memory_metadata(self, memory: Memory) -> bool:
         """Insert a memory document."""
         try:
             collection = self.get_collection()
             collection.insert_one(memory.model_dump())
             return True
         except Exception as e:
-            Logger.error(f"Error inserting memory: {e}", "[MongoDB]")
+            Logger.debug(f"Error inserting memory: {e}", "[MongoDB]")
+            return False
+    
+    def update_memory_metadata(self, memory: Memory) -> bool:
+        """Update an existing memory document."""
+        try:
+            collection = self.get_collection()
+            result = collection.update_one(
+                {"memory_id": memory.memory_id},
+                {"$set": memory.model_dump()}
+            )
+            if result.matched_count == 0:
+                Logger.debug(f"Memory {memory.memory_id} not found for update", "[MongoDB]")
+                return False
+            Logger.debug(f"Updated memory {memory.memory_id}", "[MongoDB]")
+            return True
+        except Exception as e:
+            Logger.debug(f"Error updating memory: {e}", "[MongoDB]")
+            return False
+    
+    def delete_memory_metadata(self, memory_id: str) -> bool:
+        """Delete a memory document by memory_id."""
+        try:
+            collection = self.get_collection()
+            result = collection.delete_one({"memory_id": memory_id})
+            if result.deleted_count == 0:
+                Logger.debug(f"Memory {memory_id} not found for deletion", "[MongoDB]")
+                return False
+            Logger.debug(f"Deleted memory {memory_id}", "[MongoDB]")
+            return True
+        except Exception as e:
+            Logger.debug(f"Error deleting memory: {e}", "[MongoDB]")
             return False
     
     def get_database(self):
@@ -119,3 +150,41 @@ class MongoDBStorage(BaseStorage):
             Collection instance
         """
         return self._database[self._collection_name]
+    
+    def get_memories_by_ids(self, memory_ids: list[str]) -> list[Memory]:
+        """Retrieve memories by their IDs."""
+        try:
+            if not memory_ids:
+                return []
+            
+            collection = self.get_collection()
+            documents = collection.find({"memory_id": {"$in": memory_ids}})
+            
+            memories = []
+            for doc in documents:
+                # Remove MongoDB's _id field if present
+                doc.pop("_id", None)
+                try:
+                    memory = Memory(**doc)
+                    memories.append(memory)
+                except Exception as e:
+                    Logger.debug(f"Failed to parse memory document: {e}", "[MongoDB]")
+                    continue
+            
+            Logger.debug(f"Retrieved {len(memories)} memories from MongoDB", "[MongoDB]")
+            return memories
+        except Exception as e:
+            Logger.debug(f"Error retrieving memories: {e}", "[MongoDB]")
+            return []
+
+    def delete_all_for_user(self, user_id: str) -> int:
+        """Delete all memories for a given user_id. Returns number of documents deleted."""
+        try:
+            collection = self.get_collection()
+            result = collection.delete_many({"user_id": user_id})
+            count = result.deleted_count
+            Logger.debug(f"Deleted {count} memories for user_id={user_id}", "[MongoDB]")
+            return count
+        except Exception as e:
+            Logger.debug(f"Error deleting memories for user: {e}", "[MongoDB]")
+            return 0

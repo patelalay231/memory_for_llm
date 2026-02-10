@@ -16,3 +16,6 @@ env/
 .cursor/
 .idea/
 .vscode/
+
+faiss_index
+faiss_index.payloads
