@@ -8,9 +8,7 @@ from core.memory.memory_operations import MemoryOperationExecutor
 from logger import Logger
 from datetime import datetime
 from uuid import uuid4
-from typing import List, Literal, Optional
-
-MemoryType = Literal["user", "agent", "both"]
+from typing import List, Optional
 import concurrent.futures
 
 
@@ -70,37 +68,26 @@ class MemoryStore:
     
     def create_memory(
         self,
-        recent_messages: list[dict],
-        user_message: str,
-        assistant_message: str,
+        messages: list[dict],
         user_id: Optional[str] = None,
+        metadata: Optional[dict] = None,
     ) -> list[Memory]:
         """
-        Extract memories, determine operations via LLM, and execute them.
-        Optimized batch flow: extract -> batch embeddings -> parallel searches -> batch LLM -> execute operations.
-        
+        Extract and store memories from conversation.
         Args:
-            recent_messages: List of recent conversation turns
-            user_message: Current user message
-            assistant_message: Current assistant response
+            messages: List of {"role": "user"|"assistant", "content": str}
             user_id: Optional user scope (e.g. for evaluation: speaker_a_0)
-            
+            metadata: Optional; agent_id + assistant in messages -> agent extraction
+
         Returns:
             List of stored Memory objects
-            
-        Raises:
-            Exception: If extraction, embedding generation, or operation execution fails
         """
         Logger.debug("Starting memory creation process...", "[MemoryStore]")
-        
+
         # Step 1: Extract candidate memories
         Logger.debug("Extracting memories from conversation...", "[MemoryStore]")
         try:
-            candidate_memories = self.memory_extractor.extract_memory(
-                recent_messages,
-                user_message,
-                assistant_message
-            )
+            candidate_memories = self.memory_extractor.extract_memory(messages, metadata=metadata)
         except Exception as e:
             Logger.debug(f"Failed to extract memories: {str(e)}", "[MemoryStore]")
             raise Exception(f"Failed to extract memories: {str(e)}")

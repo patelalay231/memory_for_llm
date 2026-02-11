@@ -136,11 +136,11 @@ def run_cli():
     
         # Extract and store memories from this conversation turn
         try:
-            memories = memory_api.add_memory(
-                recent_messages=history_messages[-10:], # Only use last 10 messages
-                user_message=user_message,
-                assistant_message=assistant_response
-            )
+            messages = [
+                {"role": "user", "content": user_message},
+                {"role": "assistant", "content": assistant_response},
+            ]
+            memories = memory_api.add_memory(messages)
             if memories:
                 Logger.info(f"\n💾 Summary: Successfully stored {len(memories)} memory/memories")
             else:       

@@ -1,66 +1,23 @@
-from typing import Literal
-
-MemoryType = Literal["user", "agent", "both"]
-
-
 def get_memory_extraction_prompt(
+    recent_messages: list[dict],
     user_message: str,
     assistant_message: str,
-    recent_messages: list[dict] | None = None,
-    memory_type: MemoryType = "both",
 ) -> str:
     """
-    Build a prompt that instructs the model to extract long-term memories.
-
-    Args:
-        user_message: Current user message.
-        assistant_message: Current assistant response.
-        recent_messages: Optional list of prior turns {"user": str, "assistant": str}. Default [].
-        memory_type: "user" = extract only from user message; "agent" = only from assistant; "both" = both.
+    Build a prompt that instructs the model to extract long-term memories from both
+    user and assistant messages that are useful for future responses.
     """
-    recent_messages = recent_messages or []
-    recent_messages_str = (
-        "\n".join(
-            f"User: {m['user']}\nAssistant: {m['assistant']}"
-            for m in recent_messages
-        )
-        if recent_messages
-        else "(No prior turns in this batch.)"
-    )
 
-    if memory_type == "user":
-        source_instruction = """
-# [IMPORTANT]: EXTRACT ONLY FROM THE USER MESSAGE. Do not use the assistant message.
-# [IMPORTANT]: You will be penalized if you include information from the assistant message.
-"""
-        current_block = f"""
-Current exchange (extract only from User):
-User: {user_message}
-Assistant: (omitted — do not use for extraction)
-"""
-    elif memory_type == "agent":
-        source_instruction = """
-# [IMPORTANT]: EXTRACT ONLY FROM THE ASSISTANT MESSAGE. Do not use the user message.
-# [IMPORTANT]: You will be penalized if you include information from the user message.
-"""
-        current_block = f"""
-Current exchange (extract only from Assistant):
-User: (omitted — do not use for extraction)
-Assistant: {assistant_message}
-"""
-    else:
-        source_instruction = ""
-        current_block = f"""
-Current exchange:
-User: {user_message}
-Assistant: {assistant_message}
-"""
+    recent_messages_str = "\n".join(
+        f"User: {message['user']}\nAssistant: {message['assistant']}"
+        for message in recent_messages
+    )
 
     return f"""
 You are a memory extraction engine for a long-term AI assistant.
 
 Your job is to THINK about the conversation and decide what (if anything) is worth remembering for future conversations. Do NOT extract everything—only what will genuinely help the assistant respond better later.
-{source_instruction}
+
 STEP 1: Consider the conversation. Ask yourself: "If we have a new chat next week, what from this exchange would be useful to know?"
 STEP 2: Extract ONLY those items. If nothing is worth storing, return an empty list.
 
@@ -108,7 +65,10 @@ Below is the conversation to analyze.
 
 Recent conversation (last N turns):
 {recent_messages_str}
-{current_block}
+
+Current exchange:
+User: {user_message}
+Assistant: {assistant_message}
 
 TASK: Think about what (if anything) from this conversation should be remembered. Extract only those items. Return valid JSON.
 

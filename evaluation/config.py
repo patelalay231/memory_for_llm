@@ -1,4 +1,3 @@
-"""Evaluation config: same LLM/storage/embedding as CLI (MongoDB, FAISS)."""
 import os
 from pathlib import Path
 from dotenv import load_dotenv
@@ -19,7 +18,6 @@ EVAL_METRICS_FILE = RESULTS_DIR / "evaluation_metrics.json"
 
 
 def get_config():
-    """Build config dict matching examples/cli (MongoDB, FAISS, same LLM/embedding)."""
     llm_provider_name = os.getenv("LLM_PROVIDER", "gemini").lower()
     if llm_provider_name == "huggingface":
         hf_cfg = {

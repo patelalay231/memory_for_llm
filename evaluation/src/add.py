@@ -32,29 +32,16 @@ class MemoryADD:
         return self.data
 
     def add_memories_for_speaker(self, user_id: str, messages: list, desc: str):
-        """messages: list of {"role": "user"|"assistant", "content": str} (alternating)."""
-        # Our API takes one turn: recent_messages, user_message, assistant_message
-        n = len(messages)
-        for i in tqdm(range(0, n - 1, 2), desc=desc):  # pairs (user, assistant)
-            user_content = messages[i]["content"]
-            assistant_content = messages[i + 1]["content"]
-            recent = [
-                        {"user": messages[j]["content"], "assistant": messages[j + 1]["content"]}
-                        for j in range(0, i, 2)
-                    ]
+        """messages: list of {"role": "user"|"assistant", "content": str}. Batched add (mem0-style, no recent_messages)."""
+        for i in tqdm(range(0, len(messages), self.batch_size), desc=desc):
+            batch = messages[i : i + self.batch_size]
             for attempt in range(3):
                 try:
-                    self.memory_api.add_memory(
-                        recent_messages=recent,
-                        user_message=user_content,
-                        assistant_message=assistant_content,
-                        user_id=user_id,
-                    )
+                    self.memory_api.add_memory(batch, user_id=user_id)
                     break
                 except Exception as e:
                     if attempt == 2:
                         raise e
-                    time.sleep(1)
 
     def process_conversation(self, item: dict, idx: int):
         conversation = item["conversation"]

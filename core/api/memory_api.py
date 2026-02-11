@@ -90,7 +90,7 @@ class MemoryAPI:
         Logger.debug("Setting up memory extractor...", "[MemoryAPI]")
         self.extractor = MemoryExtract(
             provider=llm_provider,
-            max_retries=3
+            max_retries=20
         )
         Logger.debug(f"Memory extractor initialized (max retries: {self.extractor.max_retries})", "[MemoryAPI]")
         
@@ -128,31 +128,27 @@ class MemoryAPI:
     
     def add_memory(
         self,
-        recent_messages: list[dict],
-        user_message: str,
-        assistant_message: str,
+        messages: list[dict],
         user_id: Optional[str] = None,
+        metadata: Optional[dict] = None,
     ) -> list[Memory]:
         """
-        Extract and store memories from conversation.
+        Extract and store memories from conversation
         
         Args:
-            recent_messages: List of recent conversation turns
-            user_message: Current user message
-            assistant_message: Current assistant response
+            messages: List of {"role": "user"|"assistant", "content": str}
             user_id: Optional user scope (e.g. for evaluation: speaker_a_0)
+            metadata: Optional; if agent_id present and messages contain assistant -> agent extraction
             
         Returns:
             List of Memory objects that were stored
         """
         Logger.debug("Starting memory addition process...", "[MemoryAPI]")
-        
-        # Create memories (extraction, embedding generation, and storage all happen inside)
+
         stored_memories = self.memory_store.create_memory(
-            recent_messages,
-            user_message,
-            assistant_message,
+            messages,
             user_id=user_id,
+            metadata=metadata,
         )
         
         Logger.debug(f"Memory addition process completed successfully ({len(stored_memories)} memory/memories stored)", "[MemoryAPI]")
